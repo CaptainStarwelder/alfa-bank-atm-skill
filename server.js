@@ -74,7 +74,7 @@ app.post('/', async (req, res) => {
 
   // Если это первое обращение или запрос помощи
   if (request.command === '' || userMessage.includes('помощь') || userMessage.includes('что ты умеешь')) {
-    response.response.text = 'Я помогу найти ближайший банкомат Альфа-Банка. Просто скажите "Найди ближайший банкомат" или укажите адрес, например, "Найди банкомат рядом с Кремлем".';
+    response.response.text = 'Я помогу найти ближайший банкомат Альфа-Банка. Просто скажите "Найди ближайший банкомат" или укажите адрес, например, "Найди банкомат рядом с Тверской улицей".';
     return res.json(response);
   }
   
@@ -140,19 +140,12 @@ app.post('/', async (req, res) => {
         }
       } else {
         // Если пользователь не указал адрес и нет доступа к геолокации, запрашиваем разрешение или адрес
-        response.response.text = 'Чтобы найти банкомат, мне нужно знать ваше местоположение. Пожалуйста, разрешите доступ к геолокации или укажите адрес, например: "Найди банкомат рядом с Кремлем".';
+        response.response.text = 'Чтобы найти банкомат, мне нужно знать ваше местоположение. Пожалуйста, укажите адрес, например: "Найди банкомат рядом с Тверской улицей".';
         
         // Запрашиваем разрешение на геолокацию
         if (!sessionState.askedForGeolocation) {
           sessionState.askedForGeolocation = true;
           response.session_state = sessionState;
-          
-          // Для новых версий Алисы добавляем запрос на геолокацию
-          if (!response.directives) {
-            response.directives = {};
-          }
-          
-          response.directives.request_geolocation = {};
         }
         
         return res.json(response);
@@ -226,7 +219,6 @@ app.post('/', async (req, res) => {
         response.response.buttons = [
           {
             title: 'Проложить маршрут',
-            url: `yandexmaps://maps.yandex.ru/?rtext=${userLocation.lat},${userLocation.lon}~${nearestBankomat.coordinates.lat},${nearestBankomat.coordinates.lon}&rtt=auto`,
             hide: true
           },
           {
@@ -247,15 +239,17 @@ app.post('/', async (req, res) => {
       const bankomat = sessionState.foundBankomat;
       const userLocation = sessionState.userLocation;
       
-      response.response.text = 'Открываю Яндекс Карты для построения маршрута до банкомата.';
+      // Формируем URL для Яндекс Карт
+      const mapsUrl = `https://yandex.ru/maps/?rtext=${userLocation.lat},${userLocation.lon}~${bankomat.coordinates.lat},${bankomat.coordinates.lon}&rtt=auto`;
+      
+      response.response.text = 'Вы можете открыть маршрут в Яндекс Картах по ссылке ниже.';
       response.response.buttons = [
         {
           title: 'Открыть маршрут в Яндекс Картах',
-          url: `yandexmaps://maps.yandex.ru/?rtext=${userLocation.lat},${userLocation.lon}~${bankomat.coordinates.lat},${bankomat.coordinates.lon}&rtt=auto`,
+          url: mapsUrl,
           hide: false
         }
       ];
-      response.response.end_session = true;
     } else {
       response.response.text = 'Сначала нужно найти банкомат. Скажите "Найди ближайший банкомат" или укажите адрес.';
     }
