@@ -4,9 +4,9 @@ const app = express();
 app.use(express.json());
 
 // URL вашей Google таблицы в формате JSON (из шага 2)
-const BANKOMATS_DATA_URL = 'ВСТАВЬТЕ_ССЫЛКУ_НА_ВАШ_APPS_SCRIPT';
+const BANKOMATS_DATA_URL = 'https://script.google.com/u/0/home/projects/1ou59JPZJZq9UVQTOLwSFPIoOxoYZI5E1UZUCqi3Ou-BIqImjXUkzQTKL';
 // API ключ Яндекс Карт
-const YANDEX_MAPS_API_KEY = 'ВСТАВЬТЕ_ВАШ_API_КЛЮЧ';
+const YANDEX_MAPS_API_KEY = 'ac9862df-83e1-4188-92a2-b6e0b5f01046';
 
 // Обработчик запросов от [jg:person_136]
 app.post('/', async (req, res) => {
