@@ -1,0 +1,16 @@
+{
+  "name": "alfa-bank-atm-skill",
+  "version": "1.0.0",
+  "description": "Навык для Яндекс Алисы для поиска банкоматов Альфа-Банка",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.5.0"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
