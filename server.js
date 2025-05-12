@@ -3,25 +3,23 @@ const axios = require('axios');
 const app = express();
 app.use(express.json());
 
-// Замените на ваш URL Google Таблицы (скрипт, возвращающий JSON)
-const BANKOMATS_DATA_URL = 'https://script.google.com/macros/s/AKfycbzWjsGkg2J-kNsK2hRUsMSU2ci6ygCrmme6skX5CoVG4AItDuxGBN26nmPjfQppxovOwg/exec';
-
-// Ваш API-ключ Яндекс.Карт
-const YANDEX_MAPS_API_KEY = 'ac9862df-83e1-4188-92a2-b6e0b5f01046';
+// 🔐 Настройки
+const YANDEX_MAPS_API_KEY = 'ac9862df-83e1-4188-92a2-b6e0b5f01046'; // <-- Замените на ваш ключ
+const BANKOMATS_DATA_URL = 'https://script.google.com/macros/s/AKfycbzWjsGkg2J-kNsK2hRUsMSU2ci6ygCrmme6skX5CoVG4AItDuxGBN26nmPjfQppxovOwg/exec'; // <-- Замените на ваш URL
 
 // Кэш координат
 const coordinatesCache = {};
 
-// Получение координат по адресу с кэшированием
+// Получение координат по адресу
 async function getCoordinates(address) {
   if (coordinatesCache[address]) {
     return coordinatesCache[address];
   }
 
   try {
-    const geocodeUrl = `https://geocode-maps.yandex.ru/1.x/?apikey=${YANDEX_MAPS_API_KEY}&format=json&geocode=${encodeURIComponent(address)}`;
-    const response = await axios.get(geocodeUrl);
-    const geoObjects = response.data.response.GeoObjectCollection.featureMember;
+    const url = `https://geocode-maps.yandex.ru/1.x/?apikey=${YANDEX_MAPS_API_KEY}&format=json&geocode=${encodeURIComponent(address)}`;
+    const res = await axios.get(url);
+    const geoObjects = res.data.response.GeoObjectCollection.featureMember;
 
     if (geoObjects.length > 0) {
       const pos = geoObjects[0].GeoObject.Point.pos.split(' ');
@@ -32,8 +30,8 @@ async function getCoordinates(address) {
       coordinatesCache[address] = coordinates;
       return coordinates;
     }
-  } catch (error) {
-    console.error(`Ошибка геокодирования адреса ${address}:`, error.message);
+  } catch (err) {
+    console.error('Ошибка геокодирования:', err.message);
   }
 
   return null;
@@ -53,63 +51,62 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// Основной обработчик POST-запросов
+// 🔧 Обработчик POST-запросов от Алисы
 app.post('/', async (req, res) => {
-  const { request, session, state } = req.body;
-  const userMessage = request.original_utterance?.toLowerCase() || '';
-  let sessionState = state?.session || {};
+  try {
+    const { request, session, state } = req.body;
+    const userMessage = request.original_utterance?.toLowerCase() || '';
+    let sessionState = state?.session || {};
 
-  let response = {
-    response: {
-      text: '',
-      tts: '',
-      buttons: [],
-      end_session: false
-    },
-    session,
-    version: '1.0',
-    session_state: sessionState
-  };
+    const response = {
+      response: {
+        text: '',
+        tts: '',
+        buttons: [],
+        end_session: false
+      },
+      session,
+      version: '1.0',
+      session_state: sessionState
+    };
 
-  if (!userMessage || userMessage.includes('помощь')) {
-    response.response.text = 'Я помогу найти ближайший банкомат Альфа-Банка. Просто скажите "Найди банкомат рядом с улицей Ленина" или укажите адрес.';
-    return res.json(response);
-  }
+    // ✅ Быстрая проверка на начало диалога или "помощь"
+    if (
+      request.command === '' ||
+      userMessage.includes('помощь') ||
+      userMessage.includes('что ты умеешь') ||
+      userMessage.includes('начать') ||
+      userMessage.includes('привет')
+    ) {
+      response.response.text = 'Привет! Я помогу найти ближайший банкомат Альфа-Банка. Просто скажите, например: "Найди банкомат рядом с улицей Ленина".';
+      response.response.buttons = [
+        { title: 'Найти банкомат', hide: true },
+        { title: 'Проложить маршрут', hide: true }
+      ];
+      return res.json(response);
+    }
 
-  if (userMessage.includes('банкомат')) {
-    try {
+    // 🧭 Обработка запроса на поиск банкомата
+    if (userMessage.includes('банкомат')) {
       let userLocation = null;
       let userAddress = '';
 
-      // Попытка получить геолокацию
+      // Попытка получить координаты из устройства
       if (request.meta?.location?.lat && request.meta?.location?.lon) {
         userLocation = {
           lat: request.meta.location.lat,
           lon: request.meta.location.lon
         };
-
-        // Обратное геокодирование
-        try {
-          const reverseUrl = `https://geocode-maps.yandex.ru/1.x/?apikey=${YANDEX_MAPS_API_KEY}&format=json&geocode=${userLocation.lon},${userLocation.lat}`;
-          const reverseRes = await axios.get(reverseUrl);
-          const geoObjects = reverseRes.data.response.GeoObjectCollection.featureMember;
-          if (geoObjects.length > 0) {
-            userAddress = geoObjects[0].GeoObject.metaDataProperty.GeocoderMetaData.text;
-          }
-        } catch (err) {
-          console.error('Ошибка обратного геокодирования:', err.message);
-        }
-
       } else {
         // Извлечение адреса из текста
-        const match = userMessage.match(/(рядом с|около|возле|на)\s+(.+)/i);
+        const match = userMessage.match(/(рядом с|около|возле|на)\s+(.*)/i);
         if (match && match[2]) {
           userAddress = match[2].trim();
         } else {
-          userAddress = userMessage.replace(/найди банкомат|банкомат|рядом|с|около|возле|на/gi, '').trim();
+          userAddress = userMessage.replace(/найди|банкомат|рядом|с|около|возле|на/gi, '').trim();
         }
 
-        if (!userAddress || userAddress.length < 3) {
+        if (userAddress.length < 3) {
           response.response.text = 'Пожалуйста, укажите более точный адрес.';
           return res.json(response);
         }
@@ -123,34 +120,36 @@ app.post('/', async (req, res) => {
         }
       }
 
-      // Получаем список банкоматов
+      // Получение списка банкоматов
       const bankomatsRes = await axios.get(BANKOMATS_DATA_URL);
       const bankomats = bankomatsRes.data;
 
-      const bankomatsWithCoords = [];
+      const bankomatsWithCoords = await Promise.all(
+        bankomats.map(async (bankomat) => {
+          const coords = await getCoordinates(bankomat.Адрес);
+          if (coords) {
+            return {
+              ...bankomat,
+              coordinates: coords
+            };
+          }
+          return null;
+        })
+      );
 
-      for (const bankomat of bankomats) {
-        const coords = await getCoordinates(bankomat.Адрес);
-        if (coords) {
-          bankomatsWithCoords.push({
-            ...bankomat,
-            coordinates: coords
-          });
-        }
-      }
+      const validBankomats = bankomatsWithCoords.filter(Boolean);
 
       // Поиск ближайшего банкомата
       let nearest = null;
       let minDistance = Infinity;
 
-      for (const bankomat of bankomatsWithCoords) {
+      for (const bankomat of validBankomats) {
         const dist = calculateDistance(
           userLocation.lat,
           userLocation.lon,
           bankomat.coordinates.lat,
           bankomat.coordinates.lon
         );
-
         if (dist < minDistance) {
           minDistance = dist;
           nearest = bankomat;
@@ -169,50 +168,60 @@ app.post('/', async (req, res) => {
           coordinates: nearest.coordinates
         };
         sessionState.userLocation = userLocation;
+        response.session_state = sessionState;
 
         response.response.buttons = [
           { title: 'Проложить маршрут', hide: true },
           { title: 'Найти другой', hide: true }
         ];
-        response.session_state = sessionState;
       } else {
-        response.response.text = 'Не удалось найти банкоматы поблизости.';
+        response.response.text = 'К сожалению, поблизости не найдено банкоматов.';
       }
 
-    } catch (error) {
-      console.error('Ошибка при поиске банкомата:', error.message);
-      response.response.text = 'Произошла ошибка. Попробуйте позже.';
+      return res.json(response);
     }
 
-    return res.json(response);
-  }
+    // 🗺 Построение маршрута
+    if (userMessage.includes('проложить маршрут') || userMessage === 'да') {
+      const bankomat = sessionState.foundBankomat;
+      const userLoc = sessionState.userLocation;
 
-  if (userMessage.includes('проложить маршрут') || userMessage === 'да') {
-    if (sessionState.foundBankomat && sessionState.userLocation) {
-      const from = sessionState.userLocation;
-      const to = sessionState.foundBankomat.coordinates;
+      if (bankomat && userLoc) {
+        const mapsUrl = `https://yandex.ru/maps/?rtext=${userLoc.lat},${userLoc.lon}~${bankomat.coordinates.lat},${bankomat.coordinates.lon}&rtt=auto`;
+        response.response.text = 'Вот ссылка для построения маршрута в Яндекс Картах:';
+        response.response.buttons = [
+          {
+            title: 'Открыть маршрут',
+            url: mapsUrl,
+            hide: false
+          }
+        ];
+      } else {
+        response.response.text = 'Сначала нужно найти банкомат. Скажите, например: "Найди банкомат рядом с улицей Ленина".';
+      }
 
-      const mapsUrl = `https://yandex.ru/maps/?rtext=${from.lat},${from.lon}~${to.lat},${to.lon}&rtt=auto`;
-
-      response.response.text = 'Вот ссылка для построения маршрута в Яндекс Картах:';
-      response.response.buttons = [
-        { title: 'Открыть маршрут', url: mapsUrl, hide: false }
-      ];
-    } else {
-      response.response.text = 'Сначала нужно найти банкомат.';
+      return res.json(response);
     }
 
-    return res.json(response);
-  }
+    // 🔁 Найти другой банкомат
+    if (userMessage.includes('найти другой')) {
+      response.response.text = 'Пожалуйста, укажите адрес, рядом с которым искать другой банкомат.';
+      return res.json(response);
+    }
 
-  if (userMessage.includes('найти другой')) {
-    response.response.text = 'Пожалуйста, укажите адрес, рядом с которым искать другой банкомат.';
+    // Ответ по умолчанию
+    response.response.text = 'Я могу помочь найти ближайший банкомат Альфа-Банка. Просто скажите: "Найди банкомат рядом с улицей Ленина".';
     return res.json(response);
+  } catch (error) {
+    console.error('Ошибка в webhook:', error.message);
+    return res.json({
+      response: {
+        text: 'Произошла ошибка на сервере. Попробуйте позже.',
+        end_session: true
+      },
+      version: '1.0'
+    });
   }
-
-  // Ответ по умолчанию
-  response.response.text = 'Я могу помочь найти ближайший банкомат Альфа-Банка. Скажите "Найди банкомат рядом с улицей Ленина".';
-  return res.json(response);
 });
 
 // Проверка работоспособности
